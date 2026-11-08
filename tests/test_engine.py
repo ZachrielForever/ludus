@@ -148,16 +148,19 @@ def test_fire_consumes_wood_and_dies_out():
 
 def test_water_douses_fire():
     g, e = make_world()
-    g.set(4, 9, Material.FIRE)    # fire resting on the floor
+    g.set(4, 9, Material.FIRE)
     g.set_meta(4, 9, 40)
-    g.set(6, 9, Material.WATER)   # on the floor too, so it can't fall away —
-    #                              it must flow sideways into contact
+    g.set(5, 9, Material.WATER)   # directly adjacent: no walk, no luck
+    g.set(6, 9, Material.WALL)    # seal the water against the fire
     saw_steam = False
-    for _ in range(20):
+    for _ in range(10):
         e.step()
         if count(g, Material.STEAM) > 0:
             saw_steam = True
-    assert saw_steam or count(g, Material.FIRE) == 0
+            break
+    assert saw_steam
+    assert count(g, Material.FIRE) == 0
+    
 # -- v3 density physics ------------------------------------------------------
 
 def test_encased_water_levels_under_oil():
