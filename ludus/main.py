@@ -11,17 +11,21 @@ from ludus.registry import all_toys
 
 FPS = 60
 
-
 class LudusWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Ludus")
-        self.resize(900, 650)
 
         self.tabs = QTabWidget()
+        self.tabs.setUsesScrollButtons(False)  # never scroll; size to fit instead
         for toy_cls in all_toys():
             self.tabs.addTab(toy_cls(), toy_cls.TITLE)
         self.setCentralWidget(self.tabs)
+
+        # Window sized by content: tab bar width + frame allowance, fixed height.
+        bar_width = self.tabs.tabBar().sizeHint().width()
+        needed = max(bar_width + 40, 900)   # 40px margin for window chrome
+        self.setFixedSize(needed, 650)
 
         # Heartbeat: drive whichever toy is on-screen, ~60fps.
         self._timer = QTimer(self)
@@ -33,13 +37,11 @@ class LudusWindow(QMainWindow):
         if hasattr(widget, "update_step"):
             widget.update_step(1 / FPS)
 
-
 def main():
     app = QApplication(sys.argv)
     window = LudusWindow()
     window.show()
     sys.exit(app.exec())
-
 
 if __name__ == "__main__":
     main()
