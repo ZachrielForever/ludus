@@ -33,9 +33,6 @@ class PlaceholderToy(QWidget):
         finally:
             painter.end()
 
-@toy
-class SandToy(PlaceholderToy):
-    TITLE = "Falling Sand"
 
 @toy
 class BuddyToy(PlaceholderToy):
