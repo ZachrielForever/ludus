@@ -1,39 +1,48 @@
-"""Falling Sand toy — toolbar + canvas + HUD.
+"""Falling Sand toy — category dropdowns + canvas + HUD.
 
-SandToy is the container (toolbar, keyboard, heartbeat delegation);
-SandCanvas owns painting and mouse input. Simulation lives in
-ludus.sand (pure Python, Qt-free) — tests exercise it headlessly.
+SandToy is the container (comboboxes per material category, eraser,
+keyboard, heartbeat delegation); SandCanvas owns painting and mouse
+input. Simulation lives in ludus.sand (pure Python, Qt-free) — tests
+exercise it headlessly.
+
+Toolbar structure is generated from materials.CATEGORIES — new
+materials slot into their category combobox automatically.
 """
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QImage, QPainter
 from PySide6.QtWidgets import (
-    QButtonGroup, QHBoxLayout, QPushButton, QVBoxLayout, QWidget,
+    QComboBox, QHBoxLayout, QPushButton, QVBoxLayout, QWidget,
 )
 
 from ludus.registry import toy
 from ludus.sand.engine import SandEngine
 from ludus.sand.grid import Grid
-from ludus.sand.materials import Material, shade
+from ludus.sand.materials import CATEGORIES, Material, shade
 
 CELL = 5        # pixels per simulated cell
 BRUSH = 3       # brush radius in cells
 
-# Toolbar order == key order. Eraser listed last; it clears, not builds.
-MATERIALS = (Material.SAND, Material.WATER, Material.WALL, Material.EMPTY)
 LABELS = {
     Material.SAND: "Sand",
     Material.WATER: "Water",
+    Material.OIL: "Oil",
+    Material.WOOD: "Wood",
     Material.WALL: "Wall",
+    Material.FIRE: "Fire",
+    Material.STEAM: "Steam",
     Material.EMPTY: "Eraser",
 }
-KEYS = {
-    Qt.Key.Key_1: Material.SAND,
-    Qt.Key.Key_2: Material.WATER,
-    Qt.Key.Key_3: Material.WALL,
-    Qt.Key.Key_4: Material.EMPTY,
-}
 
+# Number keys walk the flattened category order, eraser last.
+_FLAT = [m for _label, members in CATEGORIES for m in members]
+KEYS = {
+    getattr(Qt.Key, f"Key_{i}"): m
+    for i, m in enumerate(_FLAT, start=1)
+}
+KEYS[getattr(Qt.Key, f"Key_{len(_FLAT) + 1}")] = Material.EMPTY
+
+COUNTED = [m for m in _FLAT]   # HUD order matches the toolbar order
 
 class SandCanvas(QWidget):
     """The simulated world: mouse input in, pixels out."""
@@ -110,22 +119,22 @@ class SandCanvas(QWidget):
         try:
             painter.drawImage(self.rect(), image)
 
-            # HUD: ground truth from the grid, next to what your eyes see.
-            counts = {m: 0 for m in MATERIALS}
+            # HUD: grid truth beside visual truth; zero-counts stay quiet.
+            counts = {m: 0 for m in COUNTED}
             for y in range(gh):
                 for x in range(gw):
                     m = g.get(x, y)
                     if m in counts:
                         counts[m] += 1
+            shown = "   ".join(
+                f"{LABELS[m].lower()} {counts[m]}"
+                for m in COUNTED if counts[m]
+            )
             painter.setPen(Qt.white)
-            painter.drawText(10, 20, (
-                f"drawing: {LABELS[self.material].lower()}   "
-                f"sand {counts[Material.SAND]}  water {counts[Material.WATER]}  "
-                f"wall {counts[Material.WALL]}"
-            ))
+            painter.drawText(10, 20,
+                             f"drawing: {LABELS[self.material].lower()}   {shown}")
         finally:
             painter.end()
-
 
 @toy
 class SandToy(QWidget):
@@ -134,33 +143,58 @@ class SandToy(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.canvas = SandCanvas(self)
+        self._syncing = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
 
         bar = QHBoxLayout()
-        self.group = QButtonGroup(self)
-        self.group.setExclusive(True)
-        self.buttons = {}
-        for m in MATERIALS:
-            btn = QPushButton(LABELS[m])
-            btn.setCheckable(True)
-            self.group.addButton(btn, int(m))
-            btn.clicked.connect(lambda _=False, mat=m: self.select(mat))
-            bar.addWidget(btn)
-            self.buttons[m] = btn
+        self.combos = []
+        for label, members in CATEGORIES:
+            box = QComboBox()
+            for m in members:
+                box.addItem(f"{label}: {LABELS[m]}", int(m))
+            box.currentIndexChanged.connect(self._combo_changed)
+            bar.addWidget(box)
+            self.combos.append(box)
 
+        self.eraser_btn = QPushButton("Eraser")
+        self.eraser_btn.setCheckable(True)
+        self.eraser_btn.toggled.connect(self._eraser_toggled)
+        bar.addWidget(self.eraser_btn)
+
+        bar.addStretch(1)
         layout.addLayout(bar)
         layout.addWidget(self.canvas, stretch=1)
 
         self.select(Material.SAND)                 # default selection
 
+    # -- selection plumbing ---------------------------------------------------
+
+    def _combo_changed(self, index: int) -> None:
+        if self._syncing:
+            return
+        box = self.sender()
+        data = box.itemData(index)
+        if data is not None:
+            self.select(Material(data))
+
+    def _eraser_toggled(self, checked: bool) -> None:
+        if self._syncing:
+            return
+        self.select(Material.EMPTY if checked else Material.SAND)
+
     def select(self, material: Material) -> None:
-        """Single source of truth: updates canvas, button checks, keys."""
-        self.canvas.set_material(material)
-        for m, btn in self.buttons.items():
-            btn.setChecked(m == material)
+        """Single source of truth: canvas, comboboxes, eraser, keys."""
+        self._syncing = True
+        try:
+            self.canvas.set_material(material)
+            for box in self.combos:
+                box.setCurrentIndex(box.findData(int(material)))
+            self.eraser_btn.setChecked(material == Material.EMPTY)
+        finally:
+            self._syncing = False
 
     # -- toy interface ---------------------------------------------------------
 

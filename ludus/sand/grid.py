@@ -7,7 +7,8 @@ class Grid:
     def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
-        self.cells = bytearray(width * height)   # one Material byte per cell
+        self.cells = bytearray(width * height)   # Material byte per cell
+        self.meta = bytearray(width * height)    # per-cell bookkeeping (fire life)
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.width and 0 <= y < self.height
@@ -17,6 +18,12 @@ class Grid:
 
     def set(self, x: int, y: int, material: Material) -> None:
         self.cells[y * self.width + x] = material
+
+    def get_meta(self, x: int, y: int) -> int:
+        return self.meta[y * self.width + x]
+
+    def set_meta(self, x: int, y: int, value: int) -> None:
+        self.meta[y * self.width + x] = value & 0xFF
 
     def fill_circle(self, cx: int, cy: int, radius: int,
                     material: Material, only_empty: bool = True) -> None:
